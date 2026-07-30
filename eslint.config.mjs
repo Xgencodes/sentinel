@@ -41,6 +41,9 @@ export default tseslint.config(
       '@typescript-eslint/require-await': 'warn',
       // `import postgres = require('postgres')` matches ehr-bridge's style.
       '@typescript-eslint/no-require-imports': 'off',
+      // False-positives on `expect(mockObj.method).toHaveBeenCalled()`,
+      // a standard Jest pattern throughout the test suite.
+      '@typescript-eslint/unbound-method': 'off',
     },
   },
 );
