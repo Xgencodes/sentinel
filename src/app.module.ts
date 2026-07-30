@@ -5,6 +5,7 @@ import { TelemetryModule } from './common/telemetry.module';
 import { RegistryModule } from './registry/registry.module';
 import { SignalsModule } from './signals/signals.module';
 import { ModelModule } from './model/model.module';
+import { DeliveryModule } from './delivery/delivery.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -15,6 +16,7 @@ import { AppController } from './app.controller';
     RegistryModule,
     SignalsModule,
     ModelModule,
+    DeliveryModule,
   ],
   controllers: [AppController],
 })
