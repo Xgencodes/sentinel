@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { TelemetryModule } from './common/telemetry.module';
 import { RegistryModule } from './registry/registry.module';
 import { SignalsModule } from './signals/signals.module';
+import { ModelModule } from './model/model.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -13,6 +14,7 @@ import { AppController } from './app.controller';
     TelemetryModule,
     RegistryModule,
     SignalsModule,
+    ModelModule,
   ],
   controllers: [AppController],
 })

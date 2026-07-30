@@ -1,0 +1,1 @@
+export const INFERENCE_BACKEND = Symbol('INFERENCE_BACKEND');
