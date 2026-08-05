@@ -3,6 +3,7 @@ import { DatabaseService } from '../../database/database.service';
 import { climateSignals } from '../../database/core-schema';
 import { AdapterRegistry } from './adapter-registry';
 import { SignalWindow } from './source-adapter.interface';
+import { FeatureTableService } from '../normalization/feature-table.service';
 
 export interface IngestionRunResult {
   zoneId: string;
@@ -11,9 +12,15 @@ export interface IngestionRunResult {
 }
 
 /**
- * Runs every registered adapter for a set of zones and persists whatever
- * they return. Adapters that fail (a network error, an unmapped zone) are
- * logged and skipped — one bad feed must not stop ingestion for the rest.
+ * Runs every registered adapter for a set of zones, persists whatever they
+ * return, then rebuilds the feature table for each zone touched. Adapters
+ * that fail (a network error, an unmapped zone) are logged and skipped —
+ * one bad feed must not stop ingestion for the rest.
+ *
+ * The feature-table rebuild happens here rather than as a separate manual
+ * step: a zone trigger can only be evaluated once feature rows exist, so
+ * leaving normalisation as a disconnected step would make "ingest, then
+ * evaluate" silently fail with no feature data.
  */
 @Injectable()
 export class IngestionService {
@@ -22,6 +29,7 @@ export class IngestionService {
   constructor(
     private readonly db: DatabaseService,
     private readonly adapters: AdapterRegistry,
+    private readonly featureTable: FeatureTableService,
   ) {}
 
   async run(
@@ -30,6 +38,7 @@ export class IngestionService {
   ): Promise<IngestionRunResult[]> {
     const database = this.db.getDb();
     const results: IngestionRunResult[] = [];
+    const touchedZones = new Set<string>();
 
     for (const adapter of this.adapters.getAll()) {
       for (const zoneId of zoneIds) {
@@ -45,6 +54,7 @@ export class IngestionService {
                 timestamp: r.timestamp,
               })),
             );
+            touchedZones.add(zoneId);
           }
           results.push({
             zoneId,
@@ -58,6 +68,18 @@ export class IngestionService {
             }`,
           );
         }
+      }
+    }
+
+    for (const zoneId of touchedZones) {
+      try {
+        await this.featureTable.rebuildForZone(zoneId);
+      } catch (error) {
+        this.logger.error(
+          `Feature table rebuild failed for zone ${zoneId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
       }
     }
 

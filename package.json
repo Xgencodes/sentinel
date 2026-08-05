@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "description": "Climate-health intelligence stack: registry, signals, model reasoning and delivery for Sentinel.",
   "license": "Apache-2.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
