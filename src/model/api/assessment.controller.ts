@@ -9,6 +9,7 @@ const AssessSchema = z.object({
   prompt: z.string().min(1),
   language: z.string().default('en'),
   roadAccessible: z.boolean().default(true),
+  correlationId: z.string().optional(),
 });
 
 @Controller('v1/assessments')

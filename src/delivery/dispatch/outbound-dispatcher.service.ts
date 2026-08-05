@@ -22,6 +22,7 @@ export interface DispatchRecipient {
 
 export interface DispatchResult {
   campaignId: string;
+  correlationId: string;
   sent: number;
   failed: number;
 }
@@ -47,6 +48,7 @@ export class OutboundDispatcherService {
     zoneId: string,
     recipients: DispatchRecipient[],
     triggerZoneTriggerId?: string,
+    correlationId: string = newCorrelationId(),
   ): Promise<DispatchResult> {
     const database = this.db.getDb();
 
@@ -55,7 +57,6 @@ export class OutboundDispatcherService {
       .values({ zoneId, triggerZoneTriggerId, cohortSize: recipients.length })
       .returning();
 
-    const correlationId = newCorrelationId();
     await this.telemetry.emit({
       type: 'campaign.launched',
       correlationId,
@@ -151,6 +152,6 @@ export class OutboundDispatcherService {
       `Campaign ${campaign.id}: ${sent} sent, ${failed} failed of ${recipients.length}`,
     );
 
-    return { campaignId: campaign.id, sent, failed };
+    return { campaignId: campaign.id, correlationId, sent, failed };
   }
 }

@@ -21,6 +21,9 @@ export interface AssessPatientRequest {
   prompt: string;
   language: string;
   roadAccessible: boolean;
+  /** Threads an existing journey's correlationId (e.g. from an outbound
+   * campaign that prompted this assessment) instead of starting a new one. */
+  correlationId?: string;
 }
 
 /**
@@ -41,7 +44,7 @@ export class AssessmentService {
 
   async assess(request: AssessPatientRequest) {
     const database = this.db.getDb();
-    const correlationId = newCorrelationId();
+    const correlationId = request.correlationId ?? newCorrelationId();
 
     const latestTrigger = await database.query.zoneTriggers.findFirst({
       where: eq(zoneTriggers.zoneId, request.zoneId),

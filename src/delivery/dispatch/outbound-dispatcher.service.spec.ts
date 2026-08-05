@@ -110,7 +110,11 @@ describe('OutboundDispatcherService', () => {
       { id: 'p3', msisdn: '+3', language: 'en', isChw: false },
     ]);
 
-    expect(result).toEqual({ campaignId: 'campaign-1', sent: 2, failed: 1 });
+    expect(result).toMatchObject({
+      campaignId: 'campaign-1',
+      sent: 2,
+      failed: 1,
+    });
   });
 
   it('emits the full contact lifecycle sharing one correlationId per campaign', async () => {
@@ -140,6 +144,10 @@ describe('OutboundDispatcherService', () => {
 
     const result = await service.dispatch('z1', []);
 
-    expect(result).toEqual({ campaignId: 'campaign-1', sent: 0, failed: 0 });
+    expect(result).toMatchObject({
+      campaignId: 'campaign-1',
+      sent: 0,
+      failed: 0,
+    });
   });
 });

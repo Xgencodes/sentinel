@@ -18,6 +18,7 @@ import { TriggerResult } from '../models/risk-model.interface';
 export interface ZoneTriggerOutcome {
   zoneId: string;
   epiWeek: string;
+  correlationId: string;
   result: TriggerResult;
   facilityRiskScores: { facilityId: string; band: string }[];
   alertEmitted: boolean;
@@ -42,7 +43,10 @@ export class ZoneTriggerService {
     @Inject(SENTINEL_TELEMETRY) private readonly telemetry: TelemetryEmitter,
   ) {}
 
-  async evaluateZone(zoneId: string): Promise<ZoneTriggerOutcome> {
+  async evaluateZone(
+    zoneId: string,
+    correlationId: string = newCorrelationId(),
+  ): Promise<ZoneTriggerOutcome> {
     const database = this.db.getDb();
 
     const latestRow = await database.query.featureRows.findFirst({
@@ -79,7 +83,6 @@ export class ZoneTriggerService {
       explanation: result.explanation,
     });
 
-    const correlationId = newCorrelationId();
     await this.telemetry.emit({
       type: 'zone.triggered',
       correlationId,
@@ -123,6 +126,7 @@ export class ZoneTriggerService {
     return {
       zoneId,
       epiWeek: latestRow.epiWeek,
+      correlationId,
       result,
       facilityRiskScores: scores,
       alertEmitted,

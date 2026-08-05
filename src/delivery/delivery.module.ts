@@ -12,6 +12,7 @@ import { ChwVisitListFlow } from './ussd/chw-visit-list.flow';
 import { UssdFlowRouter } from './ussd/flow-router';
 import { UssdSessionStore } from './ussd/ussd-session.store';
 import { UssdController } from './ussd/ussd.controller';
+import { CampaignsController } from './dispatch/campaigns.controller';
 
 /**
  * Delivery — links 4 and 6's contact channel. Exported for composition
@@ -20,7 +21,7 @@ import { UssdController } from './ussd/ussd.controller';
  */
 @Module({
   imports: [DatabaseModule, RegistryModule],
-  controllers: [UssdController],
+  controllers: [UssdController, CampaignsController],
   providers: [
     {
       // Never the default: a stranger's clean clone has no AT credentials,
