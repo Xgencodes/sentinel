@@ -1,5 +1,4 @@
 import { Global, Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import {
   LogTelemetryEmitter,
   InMemoryTelemetryEmitter,
@@ -14,19 +13,28 @@ export const SENTINEL_TELEMETRY = Symbol('SENTINEL_TELEMETRY');
  * InMemoryTelemetryEmitter and reconstruct a whole journey by correlationId.
  *
  * Global so it doesn't have to be re-imported into every feature module.
+ *
+ * Reads process.env directly rather than injecting @nestjs/config's
+ * ConfigService: this module is compiled inside the `sentinel` package but
+ * also gets pulled into host apps (e.g. sentinel-stack) that install their
+ * own separate copy of @nestjs/config. NestJS DI matches providers by class
+ * reference, so a ConfigService from one package's node_modules can never
+ * satisfy an `inject: [ConfigService]` from another package's compiled
+ * code, even at the same version — that cross-package DI produces an
+ * UnknownDependenciesException at boot. process.env has no such identity
+ * problem.
  */
 @Global()
 @Module({
   providers: [
     {
       provide: SENTINEL_TELEMETRY,
-      useFactory: (config: ConfigService): TelemetryEmitter => {
-        if (config.get<string>('TELEMETRY_MODE') === 'memory') {
+      useFactory: (): TelemetryEmitter => {
+        if (process.env.TELEMETRY_MODE === 'memory') {
           return new InMemoryTelemetryEmitter();
         }
         return new LogTelemetryEmitter();
       },
-      inject: [ConfigService],
     },
   ],
   exports: [SENTINEL_TELEMETRY],

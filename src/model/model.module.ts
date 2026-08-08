@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { DatabaseModule } from '../database/database.module';
 import { INFERENCE_BACKEND } from './reasoning/inference.tokens';
 import { InferenceBackend } from './inference/backend.interface';
@@ -19,18 +18,17 @@ import { EvalController } from './api/eval.controller';
   providers: [
     {
       provide: INFERENCE_BACKEND,
-      useFactory: (config: ConfigService): InferenceBackend => {
-        const mode = config.get<string>('INFERENCE_BACKEND', 'mock');
+      useFactory: (): InferenceBackend => {
+        const mode = process.env.INFERENCE_BACKEND ?? 'mock';
         if (mode === 'http') {
           return new HttpModelBackend({
-            apiUrl: config.get<string>('MODEL_API_URL', ''),
-            apiKey: config.get<string>('MODEL_API_KEY'),
-            backendId: config.get<string>('MODEL_BACKEND_ID', 'open-weights'),
+            apiUrl: process.env.MODEL_API_URL ?? '',
+            apiKey: process.env.MODEL_API_KEY,
+            backendId: process.env.MODEL_BACKEND_ID ?? 'open-weights',
           });
         }
         return new MockInferenceBackend();
       },
-      inject: [ConfigService],
     },
     AssessmentService,
   ],

@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { DatabaseModule } from '../database/database.module';
 import { RegistryModule } from '../registry/registry.module';
 import { SMS_ADAPTER } from './dispatch/delivery.tokens';
@@ -28,19 +27,18 @@ import { CampaignsController } from './dispatch/campaigns.controller';
       // so this only activates when AT_API_KEY is actually configured
       // (Q30). See channels/mock-sms.adapter.ts and africas-talking.adapter.ts.
       provide: SMS_ADAPTER,
-      useFactory: (config: ConfigService): SmsAdapter => {
-        const apiKey = config.get<string>('AT_API_KEY');
+      useFactory: (): SmsAdapter => {
+        const apiKey = process.env.AT_API_KEY;
         if (apiKey) {
           return new AfricasTalkingAdapter({
             apiKey,
-            username: config.get<string>('AT_USERNAME', 'sandbox'),
-            senderId: config.get<string>('AT_SENDER_ID'),
-            baseUrl: config.get<string>('AT_BASE_URL'),
+            username: process.env.AT_USERNAME ?? 'sandbox',
+            senderId: process.env.AT_SENDER_ID,
+            baseUrl: process.env.AT_BASE_URL,
           });
         }
         return new MockSmsAdapter();
       },
-      inject: [ConfigService],
     },
     OutboundDispatcherService,
     PatientSelfRegistrationFlow,

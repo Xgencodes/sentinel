@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { ConfigService } from '@nestjs/config';
 import { IngestionService } from './ingestion.service';
 import { DatabaseService } from '../../database/database.service';
 
@@ -18,12 +17,11 @@ export class IngestionScheduler {
   constructor(
     private readonly ingestion: IngestionService,
     private readonly db: DatabaseService,
-    private readonly config: ConfigService,
   ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async handleScheduledIngestion(): Promise<void> {
-    if (this.config.get<string>('INGESTION_ENABLED') === 'false') {
+    if (process.env.INGESTION_ENABLED === 'false') {
       return;
     }
 
