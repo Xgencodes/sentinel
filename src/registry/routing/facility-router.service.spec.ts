@@ -44,7 +44,10 @@ describe('FacilityRouterService', () => {
               insert: () => ({
                 values: (values: any) => {
                   insertedPlacements.push(values);
-                  return Promise.resolve([]);
+                  return {
+                    returning: () =>
+                      Promise.resolve([{ id: `placement-${insertedPlacements.length}`, ...values }]),
+                  };
                 },
               }),
               update: () => ({
@@ -178,6 +181,7 @@ describe('FacilityRouterService', () => {
     );
 
     expect(result.facilityId).toBe('f-1');
+    expect(result.placementId).toBe('placement-1');
     expect(insertedPlacements).toEqual([
       expect.objectContaining({
         patientId: 'patient-1',
