@@ -1,8 +1,8 @@
 import { Controller, Post } from '@nestjs/common';
 import { DatabaseService } from './database.service';
 
-/** Dev/demo convenience — not part of the product surface. See DatabaseService.truncateAll. */
-@Controller('v1/demo-data')
+/** Operational reset endpoint — not part of the clinical/registry surface. See DatabaseService.truncateAll. */
+@Controller('v1/system')
 export class DatabaseAdminController {
   constructor(private readonly db: DatabaseService) {}
 

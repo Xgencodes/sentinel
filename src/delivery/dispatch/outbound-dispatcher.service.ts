@@ -6,6 +6,7 @@ import { campaigns, messages } from '../../database/core-schema';
 import { SmsAdapter } from '../channels/sms-adapter.interface';
 import { SMS_ADAPTER } from './delivery.tokens';
 import { SENTINEL_TELEMETRY } from '../../common/telemetry.module';
+import { ProvidersService } from '../../registry/providers/providers.service';
 import {
   DEFAULT_TEMPLATES,
   renderTemplate,
@@ -42,6 +43,7 @@ export class OutboundDispatcherService {
     private readonly db: DatabaseService,
     @Inject(SMS_ADAPTER) private readonly sms: SmsAdapter,
     @Inject(SENTINEL_TELEMETRY) private readonly telemetry: TelemetryEmitter,
+    private readonly providers: ProvidersService,
   ) {}
 
   async dispatch(
@@ -153,6 +155,63 @@ export class OutboundDispatcherService {
     );
 
     return { campaignId: campaign.id, correlationId, sent, failed };
+  }
+
+  /**
+   * Ad-hoc, single-recipient contact outside the campaign flow — the
+   * dashboard's "message this CHW directly" action. Not tied to a
+   * campaign/cohort, so it logs a messages row with campaignId left null
+   * rather than manufacturing a one-recipient campaign.
+   */
+  async contactChw(
+    chwId: string,
+    text: string,
+    correlationId: string = newCorrelationId(),
+  ) {
+    const database = this.db.getDb();
+    const chw = await this.providers.findOne(chwId);
+
+    const [messageRow] = await database
+      .insert(messages)
+      .values({
+        chwId,
+        channel: 'sms',
+        language: chw.languages[0] ?? 'en',
+        templateId: 'direct-contact',
+      })
+      .returning();
+
+    const result = await this.sms.sendSms({ to: chw.phone, message: text });
+
+    if (result.status === 'sent') {
+      await database
+        .update(messages)
+        .set({ status: 'sent', providerMessageId: result.providerMessageId })
+        .where(eq(messages.id, messageRow.id));
+      await this.telemetry.emit({
+        type: 'message.sent',
+        correlationId,
+        emitterModule: 'sentinel-delivery',
+        messageId: messageRow.id,
+        patientId: chwId,
+        channel: 'sms',
+        language: chw.languages[0] ?? 'en',
+      });
+    } else {
+      await database
+        .update(messages)
+        .set({ status: 'failed', failureReason: result.failureReason })
+        .where(eq(messages.id, messageRow.id));
+      await this.telemetry.emit({
+        type: 'message.failed',
+        correlationId,
+        emitterModule: 'sentinel-delivery',
+        messageId: messageRow.id,
+        reason: result.failureReason ?? 'unknown',
+      });
+    }
+
+    return { sent: result.status === 'sent', messageId: messageRow.id };
   }
 
   /** Per-recipient message detail for a campaign — dashboard/audit view. */

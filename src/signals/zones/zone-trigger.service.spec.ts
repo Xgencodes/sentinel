@@ -28,12 +28,14 @@ describe('ZoneTriggerService', () => {
   let notifier: jest.Mocked<AlertNotifier>;
   let inserts: Record<string, any[]>;
   let findFirstImpl: jest.Mock;
+  let communityReportCount: number;
 
   beforeEach(async () => {
     inserts = { zoneTriggers: [], facilityRiskScores: [], alerts: [] };
     telemetry = new InMemoryTelemetryEmitter();
     notifier = { notify: jest.fn().mockResolvedValue(undefined) };
     findFirstImpl = jest.fn().mockResolvedValue(LATEST_ROW);
+    communityReportCount = 0;
 
     const dbStub = {
       getDb: () => ({
@@ -43,6 +45,12 @@ describe('ZoneTriggerService', () => {
             findMany: jest.fn().mockResolvedValue(ZONE_FACILITIES),
           },
         },
+        select: (_columns: unknown) => ({
+          from: (_table: unknown) => ({
+            where: (_condition: unknown) =>
+              Promise.resolve([{ value: communityReportCount }]),
+          }),
+        }),
         insert: (table: any) => ({
           values: (values: any) => {
             const key = tableKey(table);
@@ -132,5 +140,33 @@ describe('ZoneTriggerService', () => {
     expect(events).toHaveLength(1);
     expect(events[0].correlationId).toBeTruthy();
     expect(events[0]).toMatchObject({ zoneId: 'z1', band: 'high' });
+  });
+
+  it('raises a LOW-signal zone to MEDIUM when a CHW-confirmed community report exists', async () => {
+    findFirstImpl.mockResolvedValue({
+      ...LATEST_ROW,
+      rainfallMmLag1: 0,
+      rainfallMmLag2: 0,
+      standingWaterDays: 0,
+      caseCount: 3,
+      caseCountRolling4wkAvg: 3,
+    });
+    communityReportCount = 1;
+
+    const outcome = await service.evaluateZone('z1');
+
+    expect(outcome.result.band).toBe('medium');
+    expect(outcome.result.factors.communityReportsTriggered).toBe(true);
+    expect(outcome.result.factors.communityReportsConfirmed).toBe(1);
+    expect(outcome.alertEmitted).toBe(true);
+  });
+
+  it('persists the structured factors breakdown alongside the trigger row', async () => {
+    const outcome = await service.evaluateZone('z1');
+
+    // The stub doesn't distinguish tables by identity — every insert lands
+    // in `generic`, in call order, and the zoneTriggers insert is always
+    // first (see evaluateZone).
+    expect(inserts.generic[0].factors).toEqual(outcome.result.factors);
   });
 });

@@ -72,6 +72,11 @@ export const zoneTriggers = core.table('zone_triggers', {
   sensitivity: doublePrecision('sensitivity').notNull(),
   modelVersion: text('model_version').notNull(),
   explanation: text('explanation'),
+  // Structured breakdown of what fed the band (rainfall/standing water/case
+  // spike/community reports) — see TriggerFactors. Kept alongside the prose
+  // `explanation` rather than replacing it: this is what the dashboard's
+  // "why" checklist renders from.
+  factors: jsonb('factors').$type<Record<string, unknown>>(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 

@@ -5,8 +5,9 @@ import {
   TelemetryEmitter,
 } from '@ehr-bridge/sdk';
 import { TelemetryController } from './telemetry.controller';
+import { SENTINEL_TELEMETRY } from './telemetry.tokens';
 
-export const SENTINEL_TELEMETRY = Symbol('SENTINEL_TELEMETRY');
+export { SENTINEL_TELEMETRY };
 
 /**
  * Every module emits Sentinel events (see @ehr-bridge/sdk/telemetry) through

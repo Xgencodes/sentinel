@@ -38,7 +38,7 @@ export class BaselineTriggerModel implements RiskModel {
     private readonly config: BaselineTriggerConfig = DEFAULT_BASELINE_CONFIG,
   ) {}
 
-  evaluate(row: FeatureRow): TriggerResult {
+  evaluate(row: FeatureRow, communityReportCount = 0): TriggerResult {
     const rainfallSignal = Math.max(
       row.rainfallMmLag1 ?? 0,
       row.rainfallMmLag2 ?? 0,
@@ -49,8 +49,17 @@ export class BaselineTriggerModel implements RiskModel {
       row.caseCountRolling4wkAvg !== undefined &&
       row.caseCountRolling4wkAvg > 0 &&
       row.caseCount / row.caseCountRolling4wkAvg >= this.config.caseSpikeRatio;
+    // A CHW-confirmed community report is ground truth from someone who
+    // actually looked — treated the same as standing water: on its own it's
+    // enough to raise medium, and it can push a rainfall/case signal to high.
+    const communityReportsTriggered = communityReportCount > 0;
 
-    const band = this.classify(rainfallSignal, standingWater, caseSpike);
+    const band = this.classify(
+      rainfallSignal,
+      standingWater,
+      caseSpike,
+      communityReportsTriggered,
+    );
     const triggered = band !== 'low';
 
     return {
@@ -58,7 +67,22 @@ export class BaselineTriggerModel implements RiskModel {
       band,
       sensitivity: 0.9, // from the bundled synthetic backtest — see backtest/harness.ts
       modelVersion: this.modelVersion,
-      explanation: this.explain(rainfallSignal, standingWater, caseSpike, band),
+      explanation: this.explain(
+        rainfallSignal,
+        standingWater,
+        caseSpike,
+        communityReportsTriggered,
+        communityReportCount,
+        band,
+      ),
+      factors: {
+        rainfallSignalMm: rainfallSignal,
+        rainfallTriggered: rainfallSignal >= this.config.mediumRainfallMm,
+        standingWater,
+        caseSpike,
+        communityReportsConfirmed: communityReportCount,
+        communityReportsTriggered,
+      },
     };
   }
 
@@ -66,19 +90,22 @@ export class BaselineTriggerModel implements RiskModel {
     rainfallSignal: number,
     standingWater: boolean,
     caseSpike: boolean,
+    communityConfirmed: boolean,
   ): RiskBand {
-    if (rainfallSignal >= this.config.highRainfallMm && standingWater) {
+    const groundConfirmed = standingWater || communityConfirmed;
+
+    if (rainfallSignal >= this.config.highRainfallMm && groundConfirmed) {
       return 'high';
     }
     if (
       caseSpike &&
-      (standingWater || rainfallSignal >= this.config.mediumRainfallMm)
+      (groundConfirmed || rainfallSignal >= this.config.mediumRainfallMm)
     ) {
       return 'high';
     }
     if (
       rainfallSignal >= this.config.mediumRainfallMm ||
-      standingWater ||
+      groundConfirmed ||
       caseSpike
     ) {
       return 'medium';
@@ -90,6 +117,8 @@ export class BaselineTriggerModel implements RiskModel {
     rainfallSignal: number,
     standingWater: boolean,
     caseSpike: boolean,
+    communityConfirmed: boolean,
+    communityReportCount: number,
     band: RiskBand,
   ): string {
     const reasons: string[] = [];
@@ -101,6 +130,11 @@ export class BaselineTriggerModel implements RiskModel {
     }
     if (caseSpike) {
       reasons.push('case count spike vs. rolling average');
+    }
+    if (communityConfirmed) {
+      reasons.push(
+        `${communityReportCount} CHW-confirmed community report(s)`,
+      );
     }
     if (reasons.length === 0) {
       return 'No trigger conditions met.';

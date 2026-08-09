@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { DatabaseService } from '../../database/database.service';
-import { providers } from '../schema';
+import { providers, patients } from '../schema';
+import { messages, communityReports } from '../../database/core-schema';
 import { CreateProviderRequest } from '../dto';
 
 @Injectable()
@@ -50,5 +51,34 @@ export class ProvidersService {
     return database.query.providers.findMany({
       where: eq(providers.catchmentZoneId, zoneId),
     });
+  }
+
+  /**
+   * A CHW's activity feed for the dashboard's provider detail view: their
+   * current caseload (patients assigned to them), the message history
+   * dispatched to them, and any community reports they've verified in the
+   * field. Each is independently optional — a newly-registered CHW may have
+   * none of these yet.
+   */
+  async getActivity(id: string) {
+    await this.findOne(id);
+    const database = this.db.getDb();
+
+    const [caseload, messageHistory, verifiedReports] = await Promise.all([
+      database.query.patients.findMany({
+        where: eq(patients.assignedChwId, id),
+      }),
+      database.query.messages.findMany({
+        where: eq(messages.chwId, id),
+        orderBy: [desc(messages.createdAt)],
+        limit: 20,
+      }),
+      database.query.communityReports.findMany({
+        where: eq(communityReports.verifiedByChwId, id),
+        orderBy: [desc(communityReports.createdAt)],
+      }),
+    ]);
+
+    return { caseload, messageHistory, verifiedReports };
   }
 }

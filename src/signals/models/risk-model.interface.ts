@@ -2,6 +2,16 @@ import { FeatureRow } from '../normalization/feature-table';
 
 export type RiskBand = 'low' | 'medium' | 'high';
 
+/** Structured breakdown of what fed the band decision — for the dashboard's "why" view, not just a prose sentence. */
+export interface TriggerFactors {
+  rainfallSignalMm: number;
+  rainfallTriggered: boolean;
+  standingWater: boolean;
+  caseSpike: boolean;
+  communityReportsConfirmed: number;
+  communityReportsTriggered: boolean;
+}
+
 export interface TriggerResult {
   triggered: boolean;
   band: RiskBand;
@@ -9,6 +19,7 @@ export interface TriggerResult {
   sensitivity: number;
   modelVersion: string;
   explanation: string;
+  factors: TriggerFactors;
 }
 
 /**
@@ -18,5 +29,10 @@ export interface TriggerResult {
  */
 export interface RiskModel {
   readonly modelVersion: string;
-  evaluate(row: FeatureRow): TriggerResult;
+  /**
+   * communityReportCount: chw-confirmed community reports for this zone in
+   * the current window — a ground-truth signal alongside climate features,
+   * not a replacement for them.
+   */
+  evaluate(row: FeatureRow, communityReportCount?: number): TriggerResult;
 }

@@ -111,6 +111,32 @@ export class PatientsService {
     };
   }
 
+  /**
+   * Marks the start of monitoring/treatment at the receiving facility —
+   * link 9, post-placement. Emits `treatment.started`, defined in the SDK's
+   * telemetry contract since the very first version but never actually
+   * emitted anywhere until now. No dedicated outcomes table exists yet
+   * (see ROADMAP.md), so this is telemetry-only: it marks the moment
+   * monitoring begins without claiming to collect the outcome data itself.
+   */
+  async startTreatment(
+    patientId: string,
+    facilityId: string,
+    correlationId: string = newCorrelationId(),
+  ) {
+    await this.findOne(patientId);
+
+    await this.telemetry.emit({
+      type: 'treatment.started',
+      correlationId,
+      emitterModule: 'sentinel-registry',
+      patientId,
+      facilityId,
+    });
+
+    return { patientId, facilityId, correlationId, monitoringStarted: true };
+  }
+
   async findByMsisdn(msisdn: string) {
     const database = this.db.getDb();
     return database.query.patients.findFirst({

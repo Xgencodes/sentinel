@@ -5,6 +5,7 @@ import { SMS_ADAPTER } from './delivery.tokens';
 import { MockSmsAdapter } from '../channels/mock-sms.adapter';
 import { DatabaseService } from '../../database/database.service';
 import { SENTINEL_TELEMETRY } from '../../common/telemetry.module';
+import { ProvidersService } from '../../registry/providers/providers.service';
 
 function buildDbStub() {
   let campaignCounter = 0;
@@ -42,9 +43,14 @@ function buildDbStub() {
 }
 
 describe('OutboundDispatcherService', () => {
-  async function buildService(sms: MockSmsAdapter) {
+  async function buildService(sms: MockSmsAdapter, chw?: any) {
     const { stub, updatedMessages } = buildDbStub();
     const telemetry = new InMemoryTelemetryEmitter();
+    const providers = {
+      findOne: jest.fn().mockResolvedValue(
+        chw ?? { id: 'chw1', phone: '+2', languages: ['tw'] },
+      ),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -52,6 +58,7 @@ describe('OutboundDispatcherService', () => {
         { provide: DatabaseService, useValue: stub },
         { provide: SMS_ADAPTER, useValue: sms },
         { provide: SENTINEL_TELEMETRY, useValue: telemetry },
+        { provide: ProvidersService, useValue: providers },
       ],
     }).compile();
 
@@ -59,6 +66,7 @@ describe('OutboundDispatcherService', () => {
       service: module.get(OutboundDispatcherService),
       telemetry,
       updatedMessages,
+      providers,
     };
   }
 
@@ -148,6 +156,38 @@ describe('OutboundDispatcherService', () => {
       campaignId: 'campaign-1',
       sent: 0,
       failed: 0,
+    });
+  });
+
+  describe('contactChw', () => {
+    it('sends directly to the CHW and records the message as sent', async () => {
+      const sms = new MockSmsAdapter();
+      const { service, telemetry, providers } = await buildService(sms);
+
+      const result = await service.contactChw('chw1', 'Please check in on patient X');
+
+      expect(providers.findOne).toHaveBeenCalledWith('chw1');
+      expect(sms.sent).toHaveLength(1);
+      expect(sms.sent[0]).toMatchObject({
+        to: '+2',
+        message: 'Please check in on patient X',
+      });
+      expect(result.sent).toBe(true);
+      expect(telemetry.events.map((e) => e.type)).toEqual(['message.sent']);
+    });
+
+    it('records a failed send without throwing', async () => {
+      class FlakyAdapter extends MockSmsAdapter {
+        sendSms(request: any) {
+          return Promise.resolve({ status: 'failed' as const, failureReason: 'blocked' });
+        }
+      }
+      const { service, telemetry } = await buildService(new FlakyAdapter());
+
+      const result = await service.contactChw('chw1', 'hello');
+
+      expect(result.sent).toBe(false);
+      expect(telemetry.events.map((e) => e.type)).toEqual(['message.failed']);
     });
   });
 });

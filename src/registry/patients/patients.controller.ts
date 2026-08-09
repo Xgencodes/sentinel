@@ -43,6 +43,15 @@ export class PatientsController {
     return this.patientsService.getStatus(id);
   }
 
+  /** Marks monitoring/treatment as started at the receiving facility — post-placement. */
+  @Post(':id/start-treatment')
+  async startTreatment(
+    @Param('id') id: string,
+    @Body() body: { facilityId: string; correlationId?: string },
+  ) {
+    return this.patientsService.startTreatment(id, body.facilityId, body.correlationId);
+  }
+
   @Post('consent')
   async recordConsent(@Body() body: unknown) {
     try {

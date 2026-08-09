@@ -12,6 +12,7 @@ import { UssdFlowRouter } from './ussd/flow-router';
 import { UssdSessionStore } from './ussd/ussd-session.store';
 import { UssdController } from './ussd/ussd.controller';
 import { CampaignsController } from './dispatch/campaigns.controller';
+import { ProviderContactController } from './dispatch/provider-contact.controller';
 
 /**
  * Delivery — links 4 and 6's contact channel. Exported for composition
@@ -20,7 +21,7 @@ import { CampaignsController } from './dispatch/campaigns.controller';
  */
 @Module({
   imports: [DatabaseModule, RegistryModule],
-  controllers: [UssdController, CampaignsController],
+  controllers: [UssdController, CampaignsController, ProviderContactController],
   providers: [
     {
       // Never the default: a stranger's clean clone has no AT credentials,

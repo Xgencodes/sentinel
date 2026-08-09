@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { eq, desc } from 'drizzle-orm';
+import { eq, and, desc, count } from 'drizzle-orm';
 import { newCorrelationId, TelemetryEmitter } from '@ehr-bridge/sdk';
 import { DatabaseService } from '../../database/database.service';
 import {
@@ -7,6 +7,7 @@ import {
   zoneTriggers,
   facilityRiskScores,
   alerts,
+  communityReports,
 } from '../../database/core-schema';
 import { facilities } from '../../registry/schema';
 import { ModelRegistry } from '../models/model-registry';
@@ -60,18 +61,34 @@ export class ZoneTriggerService {
       );
     }
 
+    // CHW-confirmed community reports are ground truth alongside the
+    // climate features — a resident-reported flood a CHW has personally
+    // verified counts toward the trigger the same way a sensor would.
+    const [{ value: communityReportCount }] = await database
+      .select({ value: count() })
+      .from(communityReports)
+      .where(
+        and(
+          eq(communityReports.zoneId, zoneId),
+          eq(communityReports.verificationStatus, 'chw-confirmed'),
+        ),
+      );
+
     const model = this.models.get();
-    const result = model.evaluate({
-      zoneId: latestRow.zoneId,
-      epiWeek: latestRow.epiWeek,
-      rainfallMm: latestRow.rainfallMm ?? 0,
-      rainfallMmLag1: latestRow.rainfallMmLag1 ?? undefined,
-      rainfallMmLag2: latestRow.rainfallMmLag2 ?? undefined,
-      standingWaterDays: latestRow.standingWaterDays ?? 0,
-      caseCount: latestRow.caseCount ?? 0,
-      caseCountLag1: latestRow.caseCountLag1 ?? undefined,
-      caseCountRolling4wkAvg: latestRow.caseCountRolling4wkAvg ?? undefined,
-    });
+    const result = model.evaluate(
+      {
+        zoneId: latestRow.zoneId,
+        epiWeek: latestRow.epiWeek,
+        rainfallMm: latestRow.rainfallMm ?? 0,
+        rainfallMmLag1: latestRow.rainfallMmLag1 ?? undefined,
+        rainfallMmLag2: latestRow.rainfallMmLag2 ?? undefined,
+        standingWaterDays: latestRow.standingWaterDays ?? 0,
+        caseCount: latestRow.caseCount ?? 0,
+        caseCountLag1: latestRow.caseCountLag1 ?? undefined,
+        caseCountRolling4wkAvg: latestRow.caseCountRolling4wkAvg ?? undefined,
+      },
+      communityReportCount,
+    );
 
     await database.insert(zoneTriggers).values({
       zoneId,
@@ -81,6 +98,7 @@ export class ZoneTriggerService {
       sensitivity: result.sensitivity,
       modelVersion: result.modelVersion,
       explanation: result.explanation,
+      factors: result.factors as unknown as Record<string, unknown>,
     });
 
     await this.telemetry.emit({

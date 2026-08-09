@@ -1,6 +1,6 @@
 import { Controller, Get, Inject, Param } from '@nestjs/common';
 import { InMemoryTelemetryEmitter, TelemetryEmitter } from '@ehr-bridge/sdk';
-import { SENTINEL_TELEMETRY } from './telemetry.module';
+import { SENTINEL_TELEMETRY } from './telemetry.tokens';
 
 /**
  * Exposes the in-memory telemetry timeline over HTTP so a dashboard can show

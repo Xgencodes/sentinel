@@ -37,4 +37,10 @@ export class ProvidersController {
   async findOne(@Param('id') id: string) {
     return this.providersService.findOne(id);
   }
+
+  /** Caseload, message history and verified community reports for this CHW. */
+  @Get(':id/activity')
+  async getActivity(@Param('id') id: string) {
+    return this.providersService.getActivity(id);
+  }
 }
