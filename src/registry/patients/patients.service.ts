@@ -1,8 +1,14 @@
 import { Injectable, NotFoundException, Logger, Inject } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { newCorrelationId, TelemetryEmitter } from '@ehr-bridge/sdk';
 import { DatabaseService } from '../../database/database.service';
 import { patients, consentRecords } from '../schema';
+import {
+  assessments,
+  escalations,
+  placements,
+  messages,
+} from '../../database/core-schema';
 import { CreatePatientRequest, RecordConsentRequest } from '../dto';
 import { SENTINEL_TELEMETRY } from '../../common/telemetry.module';
 
@@ -54,11 +60,55 @@ export class PatientsService {
     const database = this.db.getDb();
     const patient = await database.query.patients.findFirst({
       where: eq(patients.id, id),
+      with: { zone: true, assignedChw: true },
     });
     if (!patient) {
       throw new NotFoundException(`Patient ${id} not found`);
     }
     return patient;
+  }
+
+  /**
+   * "Current status" for the dashboard's patient detail view: the patient's
+   * registry record plus the latest read from each downstream stage of the
+   * chain — triage, escalation, placement — and their recent message
+   * history. Each is independently optional (a patient may not have been
+   * triaged yet), so this composes the latest-of-each rather than assuming
+   * the full chain has run.
+   */
+  async getStatus(id: string) {
+    const patient = await this.findOne(id);
+    const database = this.db.getDb();
+
+    const [latestAssessment, latestEscalation, latestPlacement, recentMessages] =
+      await Promise.all([
+        database.query.assessments.findFirst({
+          where: eq(assessments.patientId, id),
+          orderBy: [desc(assessments.createdAt)],
+        }),
+        database.query.escalations.findFirst({
+          where: eq(escalations.patientId, id),
+          orderBy: [desc(escalations.createdAt)],
+        }),
+        database.query.placements.findFirst({
+          where: eq(placements.patientId, id),
+          orderBy: [desc(placements.createdAt)],
+          with: { facility: true },
+        }),
+        database.query.messages.findMany({
+          where: eq(messages.patientId, id),
+          orderBy: [desc(messages.createdAt)],
+          limit: 5,
+        }),
+      ]);
+
+    return {
+      patient,
+      latestAssessment: latestAssessment ?? null,
+      latestEscalation: latestEscalation ?? null,
+      latestPlacement: latestPlacement ?? null,
+      recentMessages,
+    };
   }
 
   async findByMsisdn(msisdn: string) {

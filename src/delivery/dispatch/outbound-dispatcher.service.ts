@@ -154,4 +154,14 @@ export class OutboundDispatcherService {
 
     return { campaignId: campaign.id, correlationId, sent, failed };
   }
+
+  /** Per-recipient message detail for a campaign — dashboard/audit view. */
+  async listMessages(campaignId: string) {
+    const database = this.db.getDb();
+    return database.query.messages.findMany({
+      where: eq(messages.campaignId, campaignId),
+      with: { patient: true, chw: true },
+      orderBy: (m, { asc }) => [asc(m.createdAt)],
+    });
+  }
 }

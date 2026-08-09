@@ -68,5 +68,6 @@ export const SelectFacilitySchema = z.object({
   patientId: z.string().uuid(),
   originZoneId: z.string().uuid(),
   requiredSpecialty: z.string().optional(),
+  correlationId: z.string().optional(),
 });
 export type SelectFacilityRequest = z.infer<typeof SelectFacilitySchema>;

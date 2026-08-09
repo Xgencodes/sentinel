@@ -1,4 +1,11 @@
-import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Param,
+  Body,
+  BadRequestException,
+} from '@nestjs/common';
 import { z } from 'zod';
 import { CohortResolverService } from '../../registry/cohort/cohort-resolver.service';
 import { ProvidersService } from '../../registry/providers/providers.service';
@@ -77,5 +84,11 @@ export class CampaignsController {
       }
       throw error;
     }
+  }
+
+  /** Per-recipient send detail for a campaign — recipient, channel, template, status. */
+  @Get(':id/messages')
+  async listMessages(@Param('id') id: string) {
+    return this.dispatcher.listMessages(id);
   }
 }

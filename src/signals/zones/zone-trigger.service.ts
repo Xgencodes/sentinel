@@ -112,9 +112,15 @@ export class ZoneTriggerService {
       scores.push({ facilityId: facility.id, band: result.band });
     }
 
+    // Alert on any triggered band (medium or high), not just high — the
+    // model already treats medium as "triggered" (see baseline-trigger.model
+    // .ts: triggered = band !== 'low'), and cohort contact/dispatch already
+    // fires at medium. The alert feed staying silent at medium meant the
+    // dashboard showed no record of an event that had already caused an
+    // outbound campaign — the feed should reflect what the system acted on.
     let alertEmitted = false;
-    if (result.band === 'high') {
-      const message = `Zone ${zoneId} crossed into HIGH risk for ${latestRow.epiWeek}: ${result.explanation}`;
+    if (result.triggered) {
+      const message = `Zone ${zoneId} crossed into ${result.band.toUpperCase()} risk for ${latestRow.epiWeek}: ${result.explanation}`;
       await database
         .insert(alerts)
         .values({ zoneId, band: result.band, message });

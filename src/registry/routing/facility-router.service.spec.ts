@@ -5,6 +5,7 @@ import {
 } from './facility-router.service';
 import { SyntheticRoadAccessAdapter } from './road-access.adapter';
 import { DatabaseService } from '../../database/database.service';
+import { SENTINEL_TELEMETRY } from '../../common/telemetry.module';
 
 const ORIGIN_ZONE = 'flood-zone-1';
 
@@ -21,19 +22,44 @@ function facility(overrides: Partial<any>) {
 describe('FacilityRouterService', () => {
   let roadAccess: SyntheticRoadAccessAdapter;
   let findMany: jest.Mock;
+  let insertedPlacements: any[];
+  let bedUpdates: string[];
+  let emit: jest.Mock;
 
   async function buildService(facilities: any[]) {
     findMany = jest.fn().mockResolvedValue(facilities);
     roadAccess = new SyntheticRoadAccessAdapter();
+    insertedPlacements = [];
+    bedUpdates = [];
+    emit = jest.fn().mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FacilityRouterService,
         {
           provide: DatabaseService,
-          useValue: { getDb: () => ({ query: { facilities: { findMany } } }) },
+          useValue: {
+            getDb: () => ({
+              query: { facilities: { findMany } },
+              insert: () => ({
+                values: (values: any) => {
+                  insertedPlacements.push(values);
+                  return Promise.resolve([]);
+                },
+              }),
+              update: () => ({
+                set: () => ({
+                  where: (condition: any) => {
+                    bedUpdates.push(condition);
+                    return Promise.resolve([]);
+                  },
+                }),
+              }),
+            }),
+          },
         },
         { provide: ROAD_ACCESS_ADAPTER, useValue: roadAccess },
+        { provide: SENTINEL_TELEMETRY, useValue: { emit } },
       ],
     }).compile();
 
@@ -137,5 +163,44 @@ describe('FacilityRouterService', () => {
     const result = await service.selectReceiving(ORIGIN_ZONE);
 
     expect(result.specialtyMatched).toBe(true);
+  });
+
+  it('persists a placement and emits telemetry when a patientId is given', async () => {
+    const service = await buildService([
+      facility({ id: 'f-1', bedsAvailable: 2, specialties: [] }),
+    ]);
+
+    const result = await service.selectReceiving(
+      ORIGIN_ZONE,
+      undefined,
+      'patient-1',
+      'corr-1',
+    );
+
+    expect(result.facilityId).toBe('f-1');
+    expect(insertedPlacements).toEqual([
+      expect.objectContaining({
+        patientId: 'patient-1',
+        facilityId: 'f-1',
+        correlationId: 'corr-1',
+        bedConfirmed: true,
+      }),
+    ]);
+    expect(emit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'placement.confirmed', patientId: 'patient-1' }),
+    );
+    expect(bedUpdates).toHaveLength(1);
+  });
+
+  it('does not persist a placement when no patientId is given', async () => {
+    const service = await buildService([
+      facility({ id: 'f-1', bedsAvailable: 2, specialties: [] }),
+    ]);
+
+    await service.selectReceiving(ORIGIN_ZONE);
+
+    expect(insertedPlacements).toEqual([]);
+    expect(bedUpdates).toEqual([]);
+    expect(emit).not.toHaveBeenCalled();
   });
 });

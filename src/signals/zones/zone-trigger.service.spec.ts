@@ -90,7 +90,7 @@ describe('ZoneTriggerService', () => {
     );
   });
 
-  it('notifies the alert channel only when the band is HIGH', async () => {
+  it('does not notify the alert channel when the band is LOW (not triggered)', async () => {
     findFirstImpl.mockResolvedValue({
       ...LATEST_ROW,
       rainfallMmLag1: 0,
@@ -104,6 +104,25 @@ describe('ZoneTriggerService', () => {
 
     expect(outcome.alertEmitted).toBe(false);
     expect(notifier.notify).not.toHaveBeenCalled();
+  });
+
+  it('emits an alert at MEDIUM band, not just HIGH — medium is already "triggered"', async () => {
+    findFirstImpl.mockResolvedValue({
+      ...LATEST_ROW,
+      rainfallMmLag1: 20,
+      rainfallMmLag2: 0,
+      standingWaterDays: 0,
+      caseCount: 3,
+      caseCountRolling4wkAvg: 3,
+    });
+
+    const outcome = await service.evaluateZone('z1');
+
+    expect(outcome.result.band).toBe('medium');
+    expect(outcome.alertEmitted).toBe(true);
+    expect(notifier.notify).toHaveBeenCalledWith(
+      expect.objectContaining({ band: 'medium' }),
+    );
   });
 
   it('emits a zone.triggered telemetry event with a correlationId', async () => {

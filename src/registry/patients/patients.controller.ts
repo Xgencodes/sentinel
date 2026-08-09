@@ -37,6 +37,12 @@ export class PatientsController {
     return this.patientsService.findOne(id);
   }
 
+  /** Composite "current status" view: registry record + latest triage/escalation/placement + recent messages. */
+  @Get(':id/status')
+  async getStatus(@Param('id') id: string) {
+    return this.patientsService.getStatus(id);
+  }
+
   @Post('consent')
   async recordConsent(@Body() body: unknown) {
     try {

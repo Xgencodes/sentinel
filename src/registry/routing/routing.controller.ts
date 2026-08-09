@@ -1,4 +1,11 @@
-import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Patch,
+  Param,
+  Body,
+  BadRequestException,
+} from '@nestjs/common';
 import { z } from 'zod';
 import { FacilityRouterService } from './facility-router.service';
 import { SelectFacilitySchema } from '../dto';
@@ -19,6 +26,8 @@ export class RoutingController {
       return await this.facilityRouter.selectReceiving(
         validated.originZoneId,
         validated.requiredSpecialty,
+        validated.patientId,
+        validated.correlationId,
       );
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -26,5 +35,11 @@ export class RoutingController {
       }
       throw error;
     }
+  }
+
+  /** Marks a placement's record as transferred, once ehr-bridge confirms delivery. */
+  @Patch('placements/:id/transferred')
+  async markTransferred(@Param('id') id: string) {
+    return this.facilityRouter.markTransferred(id);
   }
 }

@@ -4,6 +4,7 @@ import {
   InMemoryTelemetryEmitter,
   TelemetryEmitter,
 } from '@ehr-bridge/sdk';
+import { TelemetryController } from './telemetry.controller';
 
 export const SENTINEL_TELEMETRY = Symbol('SENTINEL_TELEMETRY');
 
@@ -26,6 +27,7 @@ export const SENTINEL_TELEMETRY = Symbol('SENTINEL_TELEMETRY');
  */
 @Global()
 @Module({
+  controllers: [TelemetryController],
   providers: [
     {
       provide: SENTINEL_TELEMETRY,
