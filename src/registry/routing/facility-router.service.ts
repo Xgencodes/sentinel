@@ -1,4 +1,9 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import { newCorrelationId, TelemetryEmitter } from '@ehr-bridge/sdk';
 import { DatabaseService } from '../../database/database.service';
@@ -167,6 +172,86 @@ export class FacilityRouterService {
     if (!updated) {
       throw new NotFoundException(`Placement ${placementId} not found`);
     }
+    return updated;
+  }
+
+  /**
+   * Lets a human override the algorithm's destination pick — link 7 is a
+   * suggestion, not a mandate. Mutates `placements.facilityId` directly
+   * (single source of truth: PatientsService.getStatus's `latestPlacement`
+   * always reflects the real current destination, not a stale suggestion
+   * alongside a separate "actual" field) and corrects the bed accounting
+   * `selectReceiving` already applied to the original facility.
+   */
+  async overrideDestination(placementId: string, newFacilityId: string) {
+    const database = this.db.getDb();
+
+    const placement = await database.query.placements.findFirst({
+      where: eq(placements.id, placementId),
+    });
+    if (!placement) {
+      throw new NotFoundException(`Placement ${placementId} not found`);
+    }
+
+    if (placement.facilityId === newFacilityId) {
+      return placement; // No-op: already the current destination.
+    }
+
+    const newFacility = await this.findOne(newFacilityId);
+    if (newFacility.bedsAvailable <= 0) {
+      throw new BadRequestException(
+        `Facility ${newFacilityId} has no available beds`,
+      );
+    }
+
+    // Give the bed back to the facility this placement is moving away from.
+    await database
+      .update(facilities)
+      .set({ bedsAvailable: sql`${facilities.bedsAvailable} + 1` })
+      .where(eq(facilities.id, placement.facilityId));
+
+    await database
+      .update(facilities)
+      .set({ bedsAvailable: sql`${facilities.bedsAvailable} - 1` })
+      .where(eq(facilities.id, newFacilityId));
+
+    const [updated] = await database
+      .update(placements)
+      .set({ facilityId: newFacilityId, overridden: true })
+      .where(eq(placements.id, placementId))
+      .returning();
+
+    return updated;
+  }
+
+  /**
+   * Records the treatment outcome for a placement — the visible "closing
+   * the loop" moment for link 9. Every placement starts 'ongoing' by
+   * default (see core-schema.ts); this is how it moves on from there.
+   */
+  async updateOutcome(
+    placementId: string,
+    status: 'ongoing' | 'recovered' | 'referred',
+  ) {
+    const database = this.db.getDb();
+    const [updated] = await database
+      .update(placements)
+      .set({ outcomeStatus: status, outcomeUpdatedAt: new Date() })
+      .where(eq(placements.id, placementId))
+      .returning();
+    if (!updated) {
+      throw new NotFoundException(`Placement ${placementId} not found`);
+    }
+
+    await this.telemetry.emit({
+      type: 'outcome.recorded',
+      correlationId: newCorrelationId(),
+      emitterModule: 'sentinel-registry',
+      patientId: updated.patientId,
+      facilityId: updated.facilityId,
+      status,
+    });
+
     return updated;
   }
 }

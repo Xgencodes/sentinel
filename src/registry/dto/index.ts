@@ -43,9 +43,17 @@ export const CreatePatientSchema = z.object({
   isUnderFiveHousehold: z.boolean().default(false),
   hasChronicCondition: z.boolean().default(false),
   assignedChwId: z.string().uuid().optional(),
+  homeFacilityId: z.string().uuid().optional(),
   registrationProvenance: z.enum(['self-ussd', 'chw', 'dashboard']),
 });
 export type CreatePatientRequest = z.infer<typeof CreatePatientSchema>;
+
+export const UpdateHomeFacilitySchema = z.object({
+  homeFacilityId: z.string().uuid(),
+});
+export type UpdateHomeFacilityRequest = z.infer<
+  typeof UpdateHomeFacilitySchema
+>;
 
 export const RecordConsentSchema = z.object({
   patientId: z.string().uuid(),

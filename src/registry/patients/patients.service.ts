@@ -34,6 +34,7 @@ export class PatientsService {
         isUnderFiveHousehold: request.isUnderFiveHousehold,
         hasChronicCondition: request.hasChronicCondition,
         assignedChwId: request.assignedChwId,
+        homeFacilityId: request.homeFacilityId,
         registrationProvenance: request.registrationProvenance,
       })
       .returning();
@@ -60,12 +61,28 @@ export class PatientsService {
     const database = this.db.getDb();
     const patient = await database.query.patients.findFirst({
       where: eq(patients.id, id),
-      with: { zone: true, assignedChw: true },
+      with: { zone: true, assignedChw: true, homeFacility: true },
     });
     if (!patient) {
       throw new NotFoundException(`Patient ${id} not found`);
     }
     return patient;
+  }
+
+  /**
+   * Sets (or corrects) a patient's home facility — the origin side of a
+   * record transfer. Settable after creation since it's often only
+   * discovered during intake, not known at registration time.
+   */
+  async updateHomeFacility(id: string, facilityId: string) {
+    await this.findOne(id);
+    const database = this.db.getDb();
+    const [updated] = await database
+      .update(patients)
+      .set({ homeFacilityId: facilityId })
+      .where(eq(patients.id, id))
+      .returning();
+    return updated;
   }
 
   /**

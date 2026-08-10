@@ -2,13 +2,18 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Param,
   Body,
   BadRequestException,
 } from '@nestjs/common';
 import { z } from 'zod';
 import { PatientsService } from './patients.service';
-import { CreatePatientSchema, RecordConsentSchema } from '../dto';
+import {
+  CreatePatientSchema,
+  RecordConsentSchema,
+  UpdateHomeFacilitySchema,
+} from '../dto';
 
 @Controller('v1/registry/patients')
 export class PatientsController {
@@ -41,6 +46,23 @@ export class PatientsController {
   @Get(':id/status')
   async getStatus(@Param('id') id: string) {
     return this.patientsService.getStatus(id);
+  }
+
+  /** Sets/corrects a patient's home facility — the origin side of a record transfer. */
+  @Patch(':id/home-facility')
+  async updateHomeFacility(@Param('id') id: string, @Body() body: unknown) {
+    try {
+      const validated = UpdateHomeFacilitySchema.parse(body);
+      return await this.patientsService.updateHomeFacility(
+        id,
+        validated.homeFacilityId,
+      );
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw new BadRequestException(error.issues.map((i) => i.message));
+      }
+      throw error;
+    }
   }
 
   /** Marks monitoring/treatment as started at the receiving facility — post-placement. */

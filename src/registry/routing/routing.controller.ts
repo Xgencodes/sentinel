@@ -42,4 +42,39 @@ export class RoutingController {
   async markTransferred(@Param('id') id: string) {
     return this.facilityRouter.markTransferred(id);
   }
+
+  /** Overrides the algorithm's destination facility for a placement. */
+  @Patch('placements/:id')
+  async overrideDestination(@Param('id') id: string, @Body() body: unknown) {
+    const schema = z.object({ facilityId: z.string().uuid() });
+    try {
+      const validated = schema.parse(body);
+      return await this.facilityRouter.overrideDestination(
+        id,
+        validated.facilityId,
+      );
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw new BadRequestException(error.issues.map((i) => i.message));
+      }
+      throw error;
+    }
+  }
+
+  /** Records the treatment outcome for a placement — ongoing/recovered/referred. */
+  @Patch('placements/:id/outcome')
+  async updateOutcome(@Param('id') id: string, @Body() body: unknown) {
+    const schema = z.object({
+      status: z.enum(['ongoing', 'recovered', 'referred']),
+    });
+    try {
+      const validated = schema.parse(body);
+      return await this.facilityRouter.updateOutcome(id, validated.status);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw new BadRequestException(error.issues.map((i) => i.message));
+      }
+      throw error;
+    }
+  }
 }

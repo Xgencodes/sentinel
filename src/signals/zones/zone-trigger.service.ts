@@ -136,15 +136,39 @@ export class ZoneTriggerService {
     // fires at medium. The alert feed staying silent at medium meant the
     // dashboard showed no record of an event that had already caused an
     // outbound campaign — the feed should reflect what the system acted on.
+    //
+    // An alert is a standing risk episode per zone, not a log line: an
+    // already-open episode is refreshed in place rather than duplicated on
+    // every re-evaluation, and dropping back to LOW auto-resolves it.
+    const openAlert = await database.query.alerts.findFirst({
+      where: and(eq(alerts.zoneId, zoneId), eq(alerts.status, 'open')),
+    });
+
     let alertEmitted = false;
     if (result.triggered) {
       const message = `Zone ${zoneId} crossed into ${result.band.toUpperCase()} risk for ${latestRow.epiWeek}: ${result.explanation}`;
-      await database
-        .insert(alerts)
-        .values({ zoneId, band: result.band, message });
+      if (openAlert) {
+        await database
+          .update(alerts)
+          .set({ band: result.band, message })
+          .where(eq(alerts.id, openAlert.id));
+      } else {
+        await database
+          .insert(alerts)
+          .values({ zoneId, band: result.band, message });
+      }
       await this.alertNotifier.notify({ zoneId, band: result.band, message });
       alertEmitted = true;
       this.logger.warn(message);
+    } else if (openAlert) {
+      await database
+        .update(alerts)
+        .set({
+          status: 'resolved',
+          resolvedAt: new Date(),
+          resolvedReason: 'Zone returned to LOW band',
+        })
+        .where(eq(alerts.id, openAlert.id));
     }
 
     return {

@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { DatabaseService } from '../../database/database.service';
-import { facilities, specialties, zones } from '../schema';
+import { facilities, facilityEhrIdentities, specialties, zones } from '../schema';
 import { CreateFacilityRequest, UpdateBedsRequest } from '../dto';
+import { CryptoUtil } from '../../common/crypto.util';
 
 @Injectable()
 export class FacilitiesService {
@@ -71,5 +72,50 @@ export class FacilitiesService {
       .where(eq(facilities.id, id))
       .returning();
     return updated;
+  }
+
+  /**
+   * A facility's own ehr-bridge identity (see facilityEhrIdentities' own
+   * comment for why this is a separate table, admin-gated, not a column on
+   * `facilities`). Returns null rather than throwing when none exists yet —
+   * WorkflowService.ensureFacilityIdentity uses that to decide whether to
+   * provision one.
+   */
+  async getEhrIdentity(facilityId: string) {
+    const database = this.db.getDb();
+    const row = await database.query.facilityEhrIdentities.findFirst({
+      where: eq(facilityEhrIdentities.facilityId, facilityId),
+    });
+    if (!row) {
+      return null;
+    }
+    return {
+      ehrSystemId: row.ehrSystemId,
+      partnerKey: row.partnerKey,
+      secret: CryptoUtil.decrypt(row.partnerSecretEncrypted),
+    };
+  }
+
+  async setEhrIdentity(
+    facilityId: string,
+    identity: { ehrSystemId: string; partnerKey: string; secret: string },
+  ) {
+    await this.findOne(facilityId);
+    const database = this.db.getDb();
+    const values = {
+      facilityId,
+      ehrSystemId: identity.ehrSystemId,
+      partnerKey: identity.partnerKey,
+      partnerSecretEncrypted: CryptoUtil.encrypt(identity.secret),
+    };
+    const [saved] = await database
+      .insert(facilityEhrIdentities)
+      .values(values)
+      .onConflictDoUpdate({
+        target: facilityEhrIdentities.facilityId,
+        set: values,
+      })
+      .returning();
+    return { ehrSystemId: saved.ehrSystemId, partnerKey: saved.partnerKey };
   }
 }

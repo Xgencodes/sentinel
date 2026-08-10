@@ -122,6 +122,15 @@ export const alerts = core.table('alerts', {
   facilityId: uuid('facility_id').references(() => facilities.id),
   band: text('band').notNull(),
   message: text('message').notNull(),
+  // Lifecycle: an alert is a standing risk episode for its zone, not a
+  // one-shot log line — ZoneTriggerService.evaluateZone reuses the existing
+  // 'open' alert for a zone (updating band/message) rather than inserting
+  // a duplicate on every re-evaluation, auto-resolves it when the zone
+  // drops back to LOW, and a human can dismiss one early as a false
+  // positive via PATCH /v1/alerts/:id/dismiss.
+  status: text('status').notNull().default('open'), // open | resolved | dismissed
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  resolvedReason: text('resolved_reason'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
@@ -221,9 +230,18 @@ export const placements = core.table('placements', {
   bedConfirmed: boolean('bed_confirmed').notNull(),
   specialtyMatched: boolean('specialty_matched').notNull(),
   roadAccessible: boolean('road_accessible').notNull(),
+  // True once a human has picked a different destination than
+  // FacilityRouterService.selectReceiving() originally chose — see
+  // overrideDestination. facilityId above is always the current/real
+  // destination either way; this just flags that it was overridden.
+  overridden: boolean('overridden').notNull().default(false),
   recordTransferredAt: timestamp('record_transferred_at', {
     withTimezone: true,
   }),
+  // Every placement starts 'ongoing' the moment it's created — treatment
+  // status doesn't wait for the Monitoring stage to run before existing.
+  outcomeStatus: text('outcome_status').notNull().default('ongoing'), // ongoing | recovered | referred
+  outcomeUpdatedAt: timestamp('outcome_updated_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 

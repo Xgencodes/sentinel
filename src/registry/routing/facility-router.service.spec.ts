@@ -208,3 +208,135 @@ describe('FacilityRouterService', () => {
     expect(emit).not.toHaveBeenCalled();
   });
 });
+
+describe('FacilityRouterService.overrideDestination / updateOutcome', () => {
+  function whereResult(rows: any[]) {
+    const promise = Promise.resolve(rows) as any;
+    promise.returning = () => Promise.resolve(rows);
+    return promise;
+  }
+
+  async function buildService(opts: {
+    placement?: any;
+    facility?: any;
+  }) {
+    const findFirstPlacement = jest.fn().mockResolvedValue(opts.placement);
+    const findFirstFacility = jest.fn().mockResolvedValue(opts.facility);
+    const updateCalls: { set: any }[] = [];
+    const emit = jest.fn().mockResolvedValue(undefined);
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        FacilityRouterService,
+        {
+          provide: DatabaseService,
+          useValue: {
+            getDb: () => ({
+              query: {
+                placements: { findFirst: findFirstPlacement },
+                facilities: { findFirst: findFirstFacility },
+              },
+              update: () => ({
+                set: (set: any) => {
+                  updateCalls.push({ set });
+                  if (!opts.placement) {
+                    return { where: () => whereResult([]) };
+                  }
+                  const nextPlacement = { ...opts.placement, ...set };
+                  return { where: () => whereResult([nextPlacement]) };
+                },
+              }),
+            }),
+          },
+        },
+        { provide: ROAD_ACCESS_ADAPTER, useValue: new SyntheticRoadAccessAdapter() },
+        { provide: SENTINEL_TELEMETRY, useValue: { emit } },
+      ],
+    }).compile();
+
+    return { service: module.get(FacilityRouterService), updateCalls, emit };
+  }
+
+  it('moves a placement to a new facility and rebalances beds on both sides', async () => {
+    const placement = { id: 'placement-1', facilityId: 'f-old', patientId: 'patient-1' };
+    const newFacility = { id: 'f-new', bedsAvailable: 2 };
+    const { service, updateCalls } = await buildService({
+      placement,
+      facility: newFacility,
+    });
+
+    const result = await service.overrideDestination('placement-1', 'f-new');
+
+    expect(result.facilityId).toBe('f-new');
+    expect(result.overridden).toBe(true);
+    // Two bed-rebalance updates (old facility +1, new facility -1) plus the placement update.
+    expect(updateCalls).toHaveLength(3);
+    expect(updateCalls[2].set).toEqual(
+      expect.objectContaining({ facilityId: 'f-new', overridden: true }),
+    );
+  });
+
+  it('is a no-op when the new facility is already the current destination', async () => {
+    const placement = { id: 'placement-1', facilityId: 'f-same', patientId: 'patient-1' };
+    const { service, updateCalls } = await buildService({
+      placement,
+      facility: { id: 'f-same', bedsAvailable: 3 },
+    });
+
+    const result = await service.overrideDestination('placement-1', 'f-same');
+
+    expect(result).toEqual(placement);
+    expect(updateCalls).toHaveLength(0);
+  });
+
+  it('rejects when the new facility has no available beds', async () => {
+    const placement = { id: 'placement-1', facilityId: 'f-old', patientId: 'patient-1' };
+    const { service, updateCalls } = await buildService({
+      placement,
+      facility: { id: 'f-full', bedsAvailable: 0 },
+    });
+
+    await expect(
+      service.overrideDestination('placement-1', 'f-full'),
+    ).rejects.toThrow('has no available beds');
+    expect(updateCalls).toHaveLength(0);
+  });
+
+  it('throws NotFoundException when the placement does not exist', async () => {
+    const { service } = await buildService({ placement: undefined });
+
+    await expect(
+      service.overrideDestination('missing', 'f-new'),
+    ).rejects.toThrow('Placement missing not found');
+  });
+
+  it('updates the outcome status and emits telemetry', async () => {
+    const placement = {
+      id: 'placement-1',
+      patientId: 'patient-1',
+      facilityId: 'f-1',
+      outcomeStatus: 'ongoing',
+    };
+    const { service, emit } = await buildService({ placement });
+
+    const result = await service.updateOutcome('placement-1', 'recovered');
+
+    expect(result.outcomeStatus).toBe('recovered');
+    expect(emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'outcome.recorded',
+        patientId: 'patient-1',
+        facilityId: 'f-1',
+        status: 'recovered',
+      }),
+    );
+  });
+
+  it('throws NotFoundException when updating the outcome of a missing placement', async () => {
+    const { service } = await buildService({ placement: undefined });
+
+    await expect(
+      service.updateOutcome('missing', 'recovered'),
+    ).rejects.toThrow('Placement missing not found');
+  });
+});

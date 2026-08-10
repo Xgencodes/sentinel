@@ -29,6 +29,8 @@ describe('ZoneTriggerService', () => {
   let inserts: Record<string, any[]>;
   let findFirstImpl: jest.Mock;
   let communityReportCount: number;
+  let findFirstAlertImpl: jest.Mock;
+  let alertUpdates: any[];
 
   beforeEach(async () => {
     inserts = { zoneTriggers: [], facilityRiskScores: [], alerts: [] };
@@ -36,6 +38,8 @@ describe('ZoneTriggerService', () => {
     notifier = { notify: jest.fn().mockResolvedValue(undefined) };
     findFirstImpl = jest.fn().mockResolvedValue(LATEST_ROW);
     communityReportCount = 0;
+    findFirstAlertImpl = jest.fn().mockResolvedValue(undefined);
+    alertUpdates = [];
 
     const dbStub = {
       getDb: () => ({
@@ -44,6 +48,7 @@ describe('ZoneTriggerService', () => {
           facilities: {
             findMany: jest.fn().mockResolvedValue(ZONE_FACILITIES),
           },
+          alerts: { findFirst: findFirstAlertImpl },
         },
         select: (_columns: unknown) => ({
           from: (_table: unknown) => ({
@@ -58,6 +63,14 @@ describe('ZoneTriggerService', () => {
             inserts[key].push(values);
             return Promise.resolve([]);
           },
+        }),
+        update: (_table: unknown) => ({
+          set: (set: any) => ({
+            where: (_condition: unknown) => {
+              alertUpdates.push(set);
+              return Promise.resolve([]);
+            },
+          }),
         }),
       }),
     };
@@ -168,5 +181,51 @@ describe('ZoneTriggerService', () => {
     // in `generic`, in call order, and the zoneTriggers insert is always
     // first (see evaluateZone).
     expect(inserts.generic[0].factors).toEqual(outcome.result.factors);
+  });
+
+  it('updates an existing open alert in place rather than inserting a duplicate', async () => {
+    findFirstAlertImpl.mockResolvedValue({
+      id: 'alert-1',
+      zoneId: 'z1',
+      status: 'open',
+      band: 'medium',
+    });
+
+    const outcome = await service.evaluateZone('z1');
+
+    expect(outcome.alertEmitted).toBe(true);
+    // Only zoneTriggers (1) + facilityRiskScores (2, one per zone facility)
+    // go through insert() — no new alert row, since an open episode exists.
+    expect(inserts.generic).toHaveLength(3);
+    expect(alertUpdates).toEqual([
+      expect.objectContaining({ band: 'high' }),
+    ]);
+  });
+
+  it('auto-resolves an open alert when the zone drops back to LOW', async () => {
+    findFirstAlertImpl.mockResolvedValue({
+      id: 'alert-1',
+      zoneId: 'z1',
+      status: 'open',
+      band: 'high',
+    });
+    findFirstImpl.mockResolvedValue({
+      ...LATEST_ROW,
+      rainfallMmLag1: 0,
+      rainfallMmLag2: 0,
+      standingWaterDays: 0,
+      caseCount: 3,
+      caseCountRolling4wkAvg: 3,
+    });
+
+    const outcome = await service.evaluateZone('z1');
+
+    expect(outcome.alertEmitted).toBe(false);
+    expect(alertUpdates).toEqual([
+      expect.objectContaining({
+        status: 'resolved',
+        resolvedReason: 'Zone returned to LOW band',
+      }),
+    ]);
   });
 });

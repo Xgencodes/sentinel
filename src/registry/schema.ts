@@ -65,6 +65,31 @@ export const specialties = registry.table('specialties', {
   code: text('code').notNull(), // e.g. 'obstetrics', 'pediatrics', 'general'
 });
 
+// A facility's own ehr-bridge EHR-system/partner identity, lazily
+// provisioned on first transfer involving that facility (see
+// WorkflowService.ensureFacilityIdentity in sentinel-stack). Split into its
+// own table rather than columns on `facilities` because `facilities` is
+// returned wholesale (no column allow-list) by GET /v1/registry/facilities,
+// which the dashboard calls unauthenticated every 10s — a secret column
+// there would leak through an endpoint that already exists. ehrSystemId and
+// partnerKey are deterministic (derived from facilityId) and technically
+// re-derivable; stored anyway so a lookup here is one query instead of a
+// re-derivation plus a round trip to ehr-bridge's admin API every time.
+export const facilityEhrIdentities = registry.table('facility_ehr_identities', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  facilityId: uuid('facility_id')
+    .references(() => facilities.id)
+    .notNull()
+    .unique(),
+  ehrSystemId: text('ehr_system_id').notNull(),
+  partnerKey: text('partner_key').notNull(),
+  // AES-256-GCM via CryptoUtil — ehr-bridge only ever returns this secret
+  // once (at partner-approval time), so it must be persisted in recoverable
+  // form to sign future connection requests as this facility.
+  partnerSecretEncrypted: text('partner_secret_encrypted').notNull(),
+  provisionedAt: timestamp('provisioned_at', { withTimezone: true }).defaultNow(),
+});
+
 // ---------------------------------------------------------------------------
 // Providers and CHWs — both are Practitioners, distinguished by role
 // ---------------------------------------------------------------------------
@@ -100,6 +125,12 @@ export const patients = registry.table('patients', {
     .notNull()
     .default(false),
   assignedChwId: uuid('assigned_chw_id').references(() => providers.id),
+  // Where this patient's record actually lives — the origin side of a
+  // transfer (link 8). Nullable: a patient can exist (self-registered,
+  // USSD, zone-only) before any facility relationship is known, same as
+  // assignedChwId above. Required, not guessed, at transfer time if still
+  // null — see WorkflowService.transferRecord.
+  homeFacilityId: uuid('home_facility_id').references(() => facilities.id),
   registrationProvenance: text('registration_provenance').notNull(), // self-ussd | chw | dashboard
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
@@ -132,7 +163,21 @@ export const facilitiesRelations = relations(facilities, ({ one, many }) => ({
   zone: one(zones, { fields: [facilities.zoneId], references: [zones.id] }),
   specialties: many(specialties),
   providers: many(providers),
+  ehrIdentity: one(facilityEhrIdentities, {
+    fields: [facilities.id],
+    references: [facilityEhrIdentities.facilityId],
+  }),
 }));
+
+export const facilityEhrIdentitiesRelations = relations(
+  facilityEhrIdentities,
+  ({ one }) => ({
+    facility: one(facilities, {
+      fields: [facilityEhrIdentities.facilityId],
+      references: [facilities.id],
+    }),
+  }),
+);
 
 export const specialtiesRelations = relations(specialties, ({ one }) => ({
   facility: one(facilities, {
@@ -158,6 +203,10 @@ export const patientsRelations = relations(patients, ({ one, many }) => ({
   assignedChw: one(providers, {
     fields: [patients.assignedChwId],
     references: [providers.id],
+  }),
+  homeFacility: one(facilities, {
+    fields: [patients.homeFacilityId],
+    references: [facilities.id],
   }),
   consentRecords: many(consentRecords),
 }));
